@@ -32,11 +32,6 @@ void partition_cmd(char *buf, int *argcount, char arglist[100][256])
     char *q = buf;
     int number = 0;
 
-    // p = "hello";
-
-    // strncpy(arglist[*argcount], p, 3);
-    // *argcount = *argcount + 1;
-
     while(1)
     {
         if(p[0] == '\0')
@@ -87,7 +82,7 @@ void do_pipe_cmd(int argcount, char arglist[100][256])
 			}
 			else
 			{
-				printf("wrong command, because '$'\n");
+				printf("wrong command, because '&'\n");
 				return;
 			}
 		}
@@ -97,6 +92,9 @@ void do_pipe_cmd(int argcount, char arglist[100][256])
     int j = 0;
     int prepipe = 0;  
     int prefd[2], postfd[2]; // 前管道，与前面命令间的管道；后管道，与后面命令间的管道
+    int pid[10] = {0};
+    int stream_id = 0;
+    int status;
 
     for (i = 0; arg[i] != NULL; i++)
     {
@@ -104,29 +102,66 @@ void do_pipe_cmd(int argcount, char arglist[100][256])
         {
             arg[i] = NULL;
             pipe(postfd); // create pipe
-            if (prepipe)
+
+            if ((pid[stream_id] = fork()) < 0)
             {
-                do_simple_cmd(i-j, arg+j, prefd, postfd, background);
+                printf("fork error\n");
+                return;
             }
-            else
+            else if (pid[stream_id] == 0)
             {
-                do_simple_cmd(i-j, arg+j, NULL, postfd, background);
+                if (prepipe)
+                {
+                    do_simple_cmd(i-j, arg+j, prefd, postfd, background);
+                }
+                else
+                {
+                    do_simple_cmd(i-j, arg+j, NULL, postfd, background);
+                }    
             }
             prepipe = 1;
             prefd[0] = postfd[0];
             prefd[1] = postfd[1];
             j = i + 1;
+            stream_id++;
         }
     }
 
     // process the last command
-    if (prepipe)
+    if ((pid[stream_id] = fork()) < 0)
     {
-        do_simple_cmd(i-j, arg+j, prefd, NULL, background);
+        printf("fork error\n");
+        return;
+    }
+    else if (pid[stream_id] == 0)
+    {
+        if (prepipe)
+        {
+            do_simple_cmd(i-j, arg+j, prefd, NULL, background);
+        }
+        else
+        {
+            do_simple_cmd(i-j, arg+j, NULL, NULL, background);
+        }
+    }
+    stream_id++;
+
+    if (background == 0)
+    {
+        // for (i = 0; i < stream_id; i++){
+        //     waitpid(pid[i], &status, 0);
+        // }
+        for (i = 0; i < stream_id; i++){
+            printf("pid[%d] = %d\n", i, pid[i]);
+        }
+        waitpid(pid[0], &status, 0);
     }
     else
     {
-        do_simple_cmd(i-j, arg+j, NULL, NULL, background);
+        // for (i = 0; i < stream_id; i++){
+        //     waitpid(pid[i], &status, WNOHANG);
+        // }
+        waitpid(pid[0], &status, WNOHANG);
     }
 
     return;  
@@ -135,102 +170,81 @@ void do_pipe_cmd(int argcount, char arglist[100][256])
 void do_simple_cmd(int argcount, char *arg[], int *prefd, int *postfd, int background)
 {
     int i;
-    int status;
-    int pid;
+    // int status;
+    // int pid;
     int fd;
 
-    if ((pid = fork()) < 0)
+    
+    if (prefd != NULL)
     {
-        printf("fork error\n");
-        return;
+        close(prefd[1]);
+        dup2(prefd[0], STDIN_FILENO);
+        close(prefd[0]);
     }
-    else if (pid == 0)
+    if (postfd != NULL)
     {
-        // child process
-        // according to pipeline, set the input and output of the command
-        if (prefd != NULL)
-        {
-            close(prefd[1]);
-            dup2(prefd[0], STDIN_FILENO);
-            close(prefd[0]);
-        }
-        if (postfd != NULL)
-        {
-            close(postfd[0]);
-            dup2(postfd[1], STDOUT_FILENO);
-            close(postfd[1]);
-        }
+        close(postfd[0]);
+        dup2(postfd[1], STDOUT_FILENO);
+        close(postfd[1]);
+    }
 
-        // if command contains ">", ">>" or "<", then it is redirection command
-        for ( i = 0; i < argcount; i++)
+    // if command contains ">", ">>" or "<", then it is redirection command
+    for ( i = 0; i < argcount; i++)
+    {
+        if (strncmp(arg[i], ">", 1) == 0)
         {
-            if (strncmp(arg[i], ">", 1) == 0)
+            if (postfd != NULL)
             {
-                if (postfd != NULL)
-                {
-                    printf("wrong command, because '>'\n");
-                    return;
-                }
-                
-                fd = open(arg[i+1], O_WRONLY|O_CREAT|O_TRUNC, 0644);
-                dup2(fd, STDOUT_FILENO);
-                close(fd);
-                arg[i] = NULL;
+                printf("wrong command, because '>'\n");
+                return;
             }
-            else if (strncmp(arg[i], ">>", 2) == 0)
-            {
-                if (postfd != NULL)
-                {
-                    printf("wrong command, because '>>'\n");
-                    return;
-                }
-                
-                fd = open(arg[i+1], O_WRONLY|O_CREAT|O_APPEND, 0644);
-                dup2(fd, STDOUT_FILENO);
-                close(fd);
-                arg[i] = NULL;
-            }
-            else if (strncmp(arg[i], "<", 1) == 0)
-            {
-                if (prefd != NULL)
-                {
-                    printf("wrong command, because '<'\n");
-                    return;
-                }
-
-                fd = open(arg[i+1], O_RDONLY);
-                dup2(fd, STDIN_FILENO);
-                close(fd);
-                arg[i] = NULL;
-            }
+            
+            fd = open(arg[i+1], O_WRONLY|O_CREAT|O_TRUNC, 0644);
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
+            arg[i] = NULL;
         }
-
-        // execute command
-        if(!(find_cmd(arg[0])))
+        else if (strncmp(arg[i], ">>", 2) == 0)
         {
-            printf("%s : command not found\n",arg[0]);
-            exit(0);
+            if (postfd != NULL)
+            {
+                printf("wrong command, because '>>'\n");
+                return;
+            }
+            
+            fd = open(arg[i+1], O_WRONLY|O_CREAT|O_APPEND, 0644);
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
+            arg[i] = NULL;
         }
-
-        if (execvp(arg[0], arg) < 0)
+        else if (strncmp(arg[i], "<", 1) == 0)
         {
-            printf("cannot execute command %s\n", arg[0]);
-            exit(0);
+            if (prefd != NULL)
+            {
+                printf("wrong command, because '<'\n");
+                return;
+            }
+
+            fd = open(arg[i+1], O_RDONLY);
+            dup2(fd, STDIN_FILENO);
+            close(fd);
+            arg[i] = NULL;
         }
     }
-    // parent process
-    else
+
+    // execute command
+    if(!(find_cmd(arg[0])))
     {
-        if (background == 0)
-        {
-            while (wait(&status) != pid);
-        }
-        else
-        {
-            waitpid(pid, &status, WNOHANG);
-        }
-        
+        printf("%s : command not found\n",arg[0]);
+        exit(0);
     }
+
+    if (execvp(arg[0], arg) < 0)
+    {
+        printf("cannot execute command %s\n", arg[0]);
+        exit(0);
+    }
+
 
     return;
 }
