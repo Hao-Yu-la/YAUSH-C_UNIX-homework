@@ -8,6 +8,8 @@ all: $(TARGETS)
 $(TARGETS): $(CFILES) $(wildcard *.h)
 	$(CC) $(CFLAGS) -o $@ $(@:=.c) -lreadline
 
+run: all
+	./$(TARGETS)
 
 clean: $(TARGETS)
 	rm $(TARGETS)

@@ -151,9 +151,9 @@ void do_pipe_cmd(int argcount, char arglist[100][256])
         // for (i = 0; i < stream_id; i++){
         //     waitpid(pid[i], &status, 0);
         // }
-        for (i = 0; i < stream_id; i++){
-            printf("pid[%d] = %d\n", i, pid[i]);
-        }
+        // for (i = 0; i < stream_id; i++){
+        //     printf("pid[%d] = %d\n", i, pid[i]);
+        // }
         waitpid(pid[0], &status, 0);
     }
     else
@@ -191,7 +191,7 @@ void do_simple_cmd(int argcount, char *arg[], int *prefd, int *postfd, int backg
     // if command contains ">", ">>" or "<", then it is redirection command
     for ( i = 0; i < argcount; i++)
     {
-        if (strncmp(arg[i], ">", 1) == 0)
+        if (strcmp(arg[i], ">") == 0)
         {
             if (postfd != NULL)
             {
@@ -204,7 +204,7 @@ void do_simple_cmd(int argcount, char *arg[], int *prefd, int *postfd, int backg
             close(fd);
             arg[i] = NULL;
         }
-        else if (strncmp(arg[i], ">>", 2) == 0)
+        else if (strcmp(arg[i], ">>") == 0)
         {
             if (postfd != NULL)
             {
@@ -217,7 +217,7 @@ void do_simple_cmd(int argcount, char *arg[], int *prefd, int *postfd, int backg
             close(fd);
             arg[i] = NULL;
         }
-        else if (strncmp(arg[i], "<", 1) == 0)
+        else if (strcmp(arg[i], "<") == 0)
         {
             if (prefd != NULL)
             {
